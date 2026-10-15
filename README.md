@@ -27,7 +27,7 @@ Tous les réglages (prix, temps de pousse, espèces) sont dans `scripts/data.gd`
 | `scripts/main.gd` | Écran principal, boutons et fenêtres |
 | `tests/test_regles.gd` | Vérification des règles sans interface |
 
-Les graphismes sont des formes simples pour l'instant, à remplacer par de vrais dessins.
+Les dessins sont des fichiers SVG dans `art/` (animaux, cultures, objets), modifiables avec n'importe quel logiciel de dessin vectoriel comme Inkscape. Ils sont importés en double résolution pour rester nets sur téléphone.
 
 ## Lancer le jeu
 
@@ -52,7 +52,7 @@ Le guide officiel détaille chaque étape : https://docs.godotengine.org/fr/4.x/
 ## Prochaines étapes possibles
 
 - Prendre une photo du repas pour le carnet (souvenir, sans analyse).
-- Vrais dessins des animaux et de la ferme.
+- Animations des animaux (marche, câlin, repas).
 - Dépenser les cœurs : décorations, potager, mare.
 - Défis de la semaine et compteur d'impact.
 - Construction automatique de l'APK sur GitHub.
