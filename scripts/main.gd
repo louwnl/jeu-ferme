@@ -61,11 +61,12 @@ func _build() -> void:
 	top.add_child(hud)
 	var title := Label.new()
 	title.text = "Ferme Refuge"
+	title.add_theme_color_override("font_color", C_BARN_DARK)
 	title.add_theme_font_size_override("font_size", 34)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hud.add_child(title)
-	coins_label = _chip(hud)
-	hearts_label = _chip(hud)
+	coins_label = _chip(hud, FarmView.texture("objets", "pieces"))
+	hearts_label = _chip(hud, FarmView.texture("objets", "coeur"))
 
 	# La ferme, qui défile
 	var scroll := ScrollContainer.new()
@@ -155,8 +156,9 @@ func _build() -> void:
 	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toast_label.add_theme_color_override("font_color", C_BG)
 	toast_label.add_theme_stylebox_override("normal", _box(C_INK, 40, 14))
-	toast_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	toast_label.offset_top = 110
+	toast_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	toast_label.offset_top = -330
+	toast_label.offset_bottom = -270
 	toast_label.offset_left = 40
 	toast_label.offset_right = -40
 	toast_label.visible = false
@@ -165,8 +167,8 @@ func _build() -> void:
 
 
 func _refresh() -> void:
-	coins_label.text = "%d pièces" % Game.coins
-	hearts_label.text = "%d cœurs" % Game.hearts
+	coins_label.text = str(Game.coins)
+	hearts_label.text = str(Game.hearts)
 	var n := Game.rescues_today()
 	meal_button.disabled = not Game.can_rescue()
 	if Game.can_rescue():
@@ -222,6 +224,7 @@ func _build_plant(i: int) -> void:
 	for id in Data.CROPS:
 		var c: Dictionary = Data.CROPS[id]
 		var b := _button(panel_box, "%s · %d pièces · %d s" % [c["name"], c["seed"], c["grow"]])
+		b.icon = _item_icon(id)
 		b.disabled = Game.coins < c["seed"]
 		b.pressed.connect(func():
 			if Game.plant(i, id):
@@ -237,6 +240,7 @@ func _open_animal(a: Dictionary) -> void:
 func _build_animal(a: Dictionary) -> void:
 	var s: Dictionary = Data.SPECIES[a["species"]]
 	var days := int((Game.now() - float(a["saved_at"])) / 86400.0)
+	_picture(FarmView.texture("animaux", a["species"]), 150)
 	_title(a["name"])
 	var where := "dans la grange, en attente d'un %s" % Data.ENCLOSURES[s["size"]]["name"].to_lower() if a["enclosure"] < 0 else ("arrivé·e aujourd'hui" if days == 0 else "à la ferme depuis %d jours" % days)
 	_para("%s · %s" % [s["name"], where], true)
@@ -272,6 +276,7 @@ func _build_animal(a: Dictionary) -> void:
 		if Game.count(crop) > 0:
 			any = true
 			var b := _button(feeds, "%s (%d)" % [Data.CROPS[crop]["name"], Game.count(crop)])
+			b.icon = _item_icon(crop)
 			b.pressed.connect(func():
 				if Game.feed(a, crop):
 					toast("%s se régale" % a["name"]))
@@ -289,6 +294,7 @@ func _open_meal() -> void:
 
 func _build_meal_ask() -> void:
 	_panel_refresh = Callable()
+	_picture(FarmView.texture("objets", "camion"), 110)
 	_title("Ton repas était végétalien ?")
 	_para("Sur l'honneur : aucun produit animal (viande, poisson, œufs, lait, fromage, beurre, miel).")
 	var note := LineEdit.new()
@@ -310,6 +316,7 @@ func _build_meal_ask() -> void:
 
 func _build_meal_reveal(species: String, note: String) -> void:
 	var s: Dictionary = Data.SPECIES[species]
+	_picture(FarmView.texture("animaux", species), 220)
 	_title("Tu as sauvé %s %s !" % [s["art"], s["name"].to_lower()])
 	_para("Un camion du refuge arrive à ta ferme. Comment veux-tu l'appeler ?")
 	var name_edit := LineEdit.new()
@@ -348,6 +355,7 @@ func _build_workshop() -> void:
 		for k in r["needs"]:
 			needs.append("%d %s (%d)" % [r["needs"][k], Data.CROPS[k]["name"], Game.count(k)])
 		var b := _button(panel_box, "Faire : %s ← %s" % [r["name"], ", ".join(needs)])
+		b.icon = _item_icon(id)
 		b.disabled = not Game.has_items(r["needs"])
 		b.pressed.connect(func():
 			if Game.craft(id):
@@ -357,6 +365,7 @@ func _build_workshop() -> void:
 		_para("Rien en stock pour l'instant.", true)
 	for id in Game.inventory:
 		var b := _button(panel_box, "Vendre 1 %s (%d en stock) : +%d" % [Data.item_name(id), Game.count(id), Data.item_price(id)])
+		b.icon = _item_icon(id)
 		b.pressed.connect(func(): Game.sell(id))
 	_close_button()
 
@@ -486,12 +495,36 @@ func _close_button(text := "Fermer") -> void:
 	b.pressed.connect(close_panel)
 
 
-func _chip(parent: Control) -> Label:
+func _chip(parent: Control, icon: Texture2D) -> Label:
+	var chip := PanelContainer.new()
+	chip.add_theme_stylebox_override("panel", _box(C_BG, 30, 8))
+	parent.add_child(chip)
+	var row := HBoxContainer.new()
+	chip.add_child(row)
+	var pic := TextureRect.new()
+	pic.texture = icon
+	pic.custom_minimum_size = Vector2(38, 38)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(pic)
 	var l := Label.new()
-	l.add_theme_stylebox_override("normal", _box(C_BG, 30, 10))
-	l.add_theme_font_size_override("font_size", 24)
-	parent.add_child(l)
+	l.add_theme_font_size_override("font_size", 26)
+	l.custom_minimum_size = Vector2(56, 0)
+	row.add_child(l)
 	return l
+
+
+func _picture(tex: Texture2D, height: float) -> void:
+	var pic := TextureRect.new()
+	pic.texture = tex
+	pic.custom_minimum_size = Vector2(0, height)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	panel_box.add_child(pic)
+
+
+func _item_icon(id: String) -> Texture2D:
+	return FarmView.texture("cultures" if Data.CROPS.has(id) else "objets", id)
 
 
 func _box(color: Color, radius: int, pad: int) -> StyleBoxFlat:
@@ -513,6 +546,8 @@ func _make_theme() -> Theme:
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		t.set_color(c, "Button", C_INK)
 	t.set_color("font_disabled_color", "Button", C_MUTED.lerp(C_BG, 0.4))
+	t.set_constant("icon_max_width", "Button", 48)
+	t.set_constant("h_separation", "Button", 12)
 	t.set_stylebox("normal", "LineEdit", _box(Color.WHITE, 14, 14))
 	t.set_stylebox("focus", "LineEdit", _box(Color.WHITE, 14, 14))
 	t.set_color("font_color", "LineEdit", C_INK)

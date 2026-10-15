@@ -1,6 +1,5 @@
 extends Control
 ## Dessine la ferme (champs, enclos, grange, animaux) et transforme les touchers en signaux.
-## Les graphismes sont des formes simples en attendant de vrais dessins.
 
 signal plot_tapped(index: int)
 signal animal_tapped(animal: Dictionary)
@@ -9,17 +8,19 @@ signal build_tapped
 
 const W := 720.0
 const MARGIN := 24.0
-const PLOT_SIZE := Vector2(208, 120)
+const PLOT_SIZE := Vector2(208, 132)
 const PLOT_GAP := 12.0
-const PEN_SIZE := Vector2(330, 230)
+const PEN_SIZE := Vector2(330, 250)
 const PEN_GAP := 12.0
-const BODY_RADIUS := {"petit": 18.0, "moyen": 25.0, "grand": 32.0}
+const SPRITE_SIZE := {"petit": 76.0, "moyen": 96.0, "grand": 118.0}
 
 const C_GRASS := Color("8fcf6a")
-const C_GRASS_DARK := Color("6fae4f")
+const C_GRASS_DARK := Color("78bb57")
+const C_PATH := Color("e6cf9a")
 const C_SOIL := Color("8a5a3a")
 const C_SOIL_DARK := Color("6b4229")
 const C_WOOD := Color("b07a4a")
+const C_WOOD_DARK := Color("7d5230")
 const C_INK := Color("24301f")
 const C_PAPER := Color("fffdf6")
 const C_GOOD := Color("3f8f3a")
@@ -27,21 +28,35 @@ const C_WARN := Color("e0a020")
 const C_BAD := Color("c9472f")
 
 var _font: Font
+var _tex := {}
 var _plot_rects: Array = []
 var _add_plot_rect := Rect2()
 var _pen_rects: Array = []
 var _build_rect := Rect2()
 var _barn_rect := Rect2()
-var _pos := {}      # id d'animal -> position actuelle
+var _fields_bottom := 0.0
+var _decor: Array = []  # [type, position, taille] : touffes d'herbe et fleurs
+var _pos := {}      # id d'animal -> position actuelle (au sol, sous les pattes)
 var _target := {}   # id d'animal -> destination
 var _wait := {}     # id d'animal -> temps avant de repartir
 var _press_pos := Vector2.ZERO
 var _selected_id := ""
+var _time := 0.0
+
+
+static func texture(kind: String, id: String) -> Texture2D:
+	var path := "res://art/%s/%s.svg" % [kind, id]
+	return load(path) if ResourceLoader.exists(path) else null
 
 
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	for id in Data.SPECIES:
+		_tex[id] = texture("animaux", id)
+	for id in Data.CROPS:
+		_tex[id] = texture("cultures", id)
+	_tex["pousse"] = texture("cultures", "pousse")
 	Game.changed.connect(_layout)
 	_layout()
 
@@ -53,41 +68,42 @@ func select(id: String) -> void:
 
 func _layout() -> void:
 	_plot_rects.clear()
-	var y := MARGIN + 34
+	var y := MARGIN + 40
 	var n: int = Game.plots.size()
 	var cells := n + (1 if n < Data.MAX_PLOTS else 0)
 	for i in cells:
-		var col := i % 3
-		var row := i / 3
-		var r := Rect2(Vector2(MARGIN + col * (PLOT_SIZE.x + PLOT_GAP), y + row * (PLOT_SIZE.y + PLOT_GAP)), PLOT_SIZE)
+		var r := Rect2(Vector2(MARGIN + (i % 3) * (PLOT_SIZE.x + PLOT_GAP), y + (i / 3) * (PLOT_SIZE.y + PLOT_GAP)), PLOT_SIZE)
 		if i < n:
 			_plot_rects.append(r)
 		else:
 			_add_plot_rect = r
 	if n >= Data.MAX_PLOTS:
 		_add_plot_rect = Rect2()
-	y += ceili(cells / 3.0) * (PLOT_SIZE.y + PLOT_GAP) + 46
+	y += ceili(cells / 3.0) * (PLOT_SIZE.y + PLOT_GAP)
+	_fields_bottom = y
+	y += 70
 
 	_pen_rects.clear()
 	var pens: int = Game.enclosures.size()
 	var tiles := pens + (1 if pens < Data.MAX_ENCLOSURES else 0)
 	for i in tiles:
-		var r := Rect2(Vector2(MARGIN + (i % 2) * (PEN_SIZE.x + PEN_GAP), y + (i / 2) * (PEN_SIZE.y + PEN_GAP)), PEN_SIZE)
+		var r := Rect2(Vector2(MARGIN + (i % 2) * (PEN_SIZE.x + PEN_GAP), y + (i / 2) * (PEN_SIZE.y + PEN_GAP + 16)), PEN_SIZE)
 		if i < pens:
 			_pen_rects.append(r)
 		else:
 			_build_rect = r
 	if pens >= Data.MAX_ENCLOSURES:
 		_build_rect = Rect2()
-	y += ceili(tiles / 2.0) * (PEN_SIZE.y + PEN_GAP)
+	y += ceili(tiles / 2.0) * (PEN_SIZE.y + PEN_GAP + 16)
 
 	if Game.waiting_animals().size() > 0:
-		_barn_rect = Rect2(Vector2(MARGIN, y + 34), Vector2(W - MARGIN * 2, 150))
-		y += 34 + 150 + PEN_GAP
+		_barn_rect = Rect2(Vector2(MARGIN, y + 40), Vector2(W - MARGIN * 2, 200))
+		y += 40 + 200 + PEN_GAP
 	else:
 		_barn_rect = Rect2()
 
 	custom_minimum_size = Vector2(W, y + MARGIN)
+	_make_decor()
 	# Oublie les animaux disparus, place les nouveaux venus.
 	var ids := {}
 	for a in Game.animals:
@@ -105,10 +121,22 @@ func _layout() -> void:
 	queue_redraw()
 
 
+## Touffes d'herbe et fleurs, toujours aux mêmes endroits (graine fixe).
+func _make_decor() -> void:
+	_decor.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in int(custom_minimum_size.y / 14):
+		var p := Vector2(rng.randf() * W, rng.randf() * custom_minimum_size.y)
+		_decor.append([rng.randi() % 5, p, rng.randf_range(0.7, 1.3)])
+
+
+## Zone où l'animal se promène : la position est celle de ses pattes.
 func _area_for(a: Dictionary) -> Rect2:
 	var e: int = a["enclosure"]
 	var r: Rect2 = _pen_rects[e] if e >= 0 and e < _pen_rects.size() else _barn_rect
-	return r.grow_individual(-40, -60, -40, -40)
+	var s: float = SPRITE_SIZE[Data.SPECIES[a["species"]]["size"]]
+	return Rect2(r.position + Vector2(s * 0.5 + 6, s * 0.75 + 30), r.size - Vector2(s + 12, s * 0.75 + 62))
 
 
 func _random_point(r: Rect2) -> Vector2:
@@ -116,6 +144,7 @@ func _random_point(r: Rect2) -> Vector2:
 
 
 func _process(delta: float) -> void:
+	_time += delta
 	for a in Game.animals:
 		var id: String = a["id"]
 		if not _pos.has(id):
@@ -125,11 +154,11 @@ func _process(delta: float) -> void:
 			continue
 		var p: Vector2 = _pos[id]
 		var t: Vector2 = _target[id]
-		var step := 40.0 * delta
+		var step := 36.0 * delta
 		if p.distance_to(t) <= step:
 			_pos[id] = t
 			_target[id] = _random_point(_area_for(a))
-			_wait[id] = 1.5 + randf() * 3.0
+			_wait[id] = 1.5 + randf() * 3.5
 		else:
 			_pos[id] = p.move_toward(t, step)
 	queue_redraw()
@@ -139,91 +168,148 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), C_GRASS)
-	_text(Vector2(MARGIN, MARGIN + 20), "Champs", 28, C_INK)
+	for d in _decor:
+		_draw_decor(d[0], d[1], d[2])
+	# Chemin de terre entre les champs et les enclos
+	draw_rect(Rect2(0, _fields_bottom + 12, size.x, 34), C_PATH)
+	for x in range(10, int(size.x), 46):
+		draw_circle(Vector2(x, _fields_bottom + 22 + (x * 7) % 14), 3, C_PATH.darkened(0.12))
+
+	_heading(Vector2(MARGIN, MARGIN + 24), "Champs")
 	for i in _plot_rects.size():
 		_draw_plot(i, _plot_rects[i])
 	if _add_plot_rect.size != Vector2.ZERO:
 		_dashed_tile(_add_plot_rect, "+ Champ\n%d pièces" % Data.plot_cost(Game.plots.size()))
 
 	if _pen_rects.size() > 0:
-		_text(_pen_rects[0].position + Vector2(0, -14), "Enclos", 28, C_INK)
+		_heading(_pen_rects[0].position + Vector2(0, -18), "Enclos")
 	for i in _pen_rects.size():
 		_draw_pen(i, _pen_rects[i])
 	if _build_rect.size != Vector2.ZERO:
 		_dashed_tile(_build_rect, "+ Construire\nun enclos")
-
 	if _barn_rect.size != Vector2.ZERO:
-		_text(_barn_rect.position + Vector2(0, -14), "Grange : en attente d'un enclos", 26, C_INK)
-		draw_rect(_barn_rect, Color("c8553d"))
-		draw_rect(_barn_rect.grow(-8), Color("e8d9b8"))
+		_draw_barn(_barn_rect)
 
-	for a in Game.animals:
-		if _pos.has(a["id"]):
-			_draw_animal(a, _pos[a["id"]])
+	# Les animaux du fond d'abord, pour que ceux de devant les recouvrent.
+	var order: Array = Game.animals.filter(func(a): return _pos.has(a["id"]))
+	order.sort_custom(func(a, b): return _pos[a["id"]].y < _pos[b["id"]].y)
+	for a in order:
+		_draw_animal(a, _pos[a["id"]])
+
+
+func _draw_decor(kind: int, p: Vector2, s: float) -> void:
+	if kind <= 2:
+		for k in 3:
+			var x := p.x + (k - 1) * 4 * s
+			draw_line(Vector2(x, p.y), Vector2(x + (k - 1) * 3 * s, p.y - 9 * s), C_GRASS_DARK, 2.5)
+	elif kind == 3:
+		for k in 5:
+			draw_circle(p + Vector2.from_angle(k * TAU / 5) * 4 * s, 3 * s, Color("fffdf6"))
+		draw_circle(p, 2.5 * s, Color("f3b63f"))
+	else:
+		draw_circle(p, 3 * s, Color("f2a7b0"))
 
 
 func _draw_plot(i: int, r: Rect2) -> void:
+	draw_rect(Rect2(r.position + Vector2(0, 5), r.size), C_SOIL_DARK)
 	draw_rect(r, C_SOIL)
-	for k in 4:
-		var yy := r.position.y + 18 + k * 26
-		draw_line(Vector2(r.position.x + 10, yy), Vector2(r.end.x - 10, yy), C_SOIL_DARK, 3)
+	for k in 3:
+		var yy := r.position.y + 30 + k * 38
+		draw_rect(Rect2(r.position.x + 8, yy, r.size.x - 16, 10), C_SOIL_DARK.lerp(C_SOIL, 0.4))
 	var p: Dictionary = Game.plots[i]
 	if p["crop"] == "":
 		_text_centered(r, "Planter", 24, C_PAPER)
 		return
 	var crop: Dictionary = Data.CROPS[p["crop"]]
 	var prog := Game.plot_progress(i)
-	var radius := lerpf(3.0, 11.0, prog)
-	for row in 3:
-		for col in 6:
-			var c := r.position + Vector2(22 + col * 33, 24 + row * 30)
-			draw_circle(c, radius, crop["color"])
+	var tex: Texture2D = _tex[p["crop"]] if prog >= 0.5 else _tex["pousse"]
+	var s := lerpf(30.0, 58.0, prog)
+	for row in 2:
+		for col in 3:
+			var foot := r.position + Vector2(38 + col * 66 + (row * 14), 52 + row * 46)
+			if tex:
+				draw_texture_rect(tex, Rect2(foot - Vector2(s / 2, s), Vector2(s, s)), false)
 	if prog >= 1.0:
-		draw_rect(r, C_GOOD, false, 5)
-		_label_pill(Vector2(r.get_center().x, r.end.y - 16), "Récolter", C_GOOD)
+		var pulse := 0.5 + 0.5 * sin(_time * 4.0)
+		draw_rect(r.grow(2), C_PAPER.lerp(C_GOOD, pulse), false, 5)
+		_label_pill(Vector2(r.get_center().x, r.end.y - 14), "Récolter", C_GOOD)
 	else:
 		var left := int(ceil((1.0 - prog) * crop["grow"]))
-		_label_pill(Vector2(r.get_center().x, r.end.y - 16), "%s · %d s" % [crop["name"], left], C_INK)
+		_label_pill(Vector2(r.get_center().x, r.end.y - 14), "%s · %s" % [crop["name"], _duration(left)], C_INK)
 
 
 func _draw_pen(i: int, r: Rect2) -> void:
-	draw_rect(r, C_GRASS_DARK)
-	draw_rect(r.grow(-6), C_GRASS.lightened(0.1))
-	draw_rect(r, C_WOOD, false, 6)
-	for x in range(int(r.position.x), int(r.end.x) + 1, 30):
-		draw_line(Vector2(x, r.position.y - 6), Vector2(x, r.position.y + 6), C_WOOD, 5)
+	draw_rect(r, C_GRASS.lightened(0.08))
+	# Clôture : deux traverses et des poteaux
+	for yy in [r.position.y + 6, r.position.y + 18]:
+		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), C_WOOD)
+	for yy in [r.end.y - 18, r.end.y - 6]:
+		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), C_WOOD)
+	draw_rect(Rect2(r.position.x, r.position.y, 6, r.size.y), C_WOOD)
+	draw_rect(Rect2(r.end.x - 6, r.position.y, 6, r.size.y), C_WOOD)
+	var x := r.position.x
+	while x <= r.end.x:
+		draw_rect(Rect2(x - 5, r.position.y - 6, 10, 32), C_WOOD_DARK)
+		draw_rect(Rect2(x - 5, r.end.y - 26, 10, 32), C_WOOD_DARK)
+		x += r.size.x / 5.0
+	# Abreuvoir
+	var trough := Rect2(r.end.x - 70, r.position.y + 34, 52, 18)
+	draw_rect(trough, C_WOOD_DARK)
+	draw_rect(trough.grow(-4), Color("7fc4e6"))
 	var e: Dictionary = Game.enclosures[i]
 	var count := Game.animals_in(i).size()
-	_text(r.position + Vector2(12, 32), "%s · %d/%d" % [Data.ENCLOSURES[e["size"]]["name"], count, Data.ENCLOSURE_CAPACITY], 22, C_INK)
+	_label_pill(Vector2(r.position.x + 90, r.position.y + 42), "%s · %d/%d" % [Data.ENCLOSURES[e["size"]]["name"], count, Data.ENCLOSURE_CAPACITY], C_PAPER, true)
 
 
-func _draw_animal(a: Dictionary, p: Vector2) -> void:
-	var s: Dictionary = Data.SPECIES[a["species"]]
-	var rad: float = BODY_RADIUS[s["size"]]
-	var facing := 1.0 if _target.get(a["id"], p).x >= p.x else -1.0
-	draw_circle(p + Vector2(0, rad * 0.9), rad * 0.9, Color(0, 0, 0, 0.12))
-	draw_circle(p, rad, s["color"])
-	draw_arc(p, rad, 0, TAU, 32, s["accent"], 3)
-	var head := p + Vector2(facing * rad * 0.9, -rad * 0.6)
-	draw_circle(head, rad * 0.55, s["color"])
-	draw_arc(head, rad * 0.55, 0, TAU, 24, s["accent"], 3)
-	draw_circle(head + Vector2(facing * rad * 0.2, -rad * 0.1), 3, C_INK)
+func _draw_barn(r: Rect2) -> void:
+	_heading(r.position + Vector2(0, -16), "Grange : en attente d'un enclos")
+	draw_rect(Rect2(r.position + Vector2(0, 6), r.size), Color("9e3d29"))
+	draw_rect(r, Color("c8553d"))
+	draw_rect(r.grow(-12), Color("e8d9b8"))
+	for k in range(1, 6):
+		var yy := r.position.y + 12 + k * (r.size.y - 24) / 6.0
+		draw_line(Vector2(r.position.x + 12, yy), Vector2(r.end.x - 12, yy), Color("d9c59c"), 2)
+
+
+func _draw_animal(a: Dictionary, foot: Vector2) -> void:
+	var sp: Dictionary = Data.SPECIES[a["species"]]
+	var s: float = SPRITE_SIZE[sp["size"]]
+	var moving: bool = _wait.get(a["id"], 0.0) <= 0.0
+	var facing := 1.0 if _target.get(a["id"], foot).x >= foot.x else -1.0
+	var hop := absf(sin(_time * 9.0 + foot.x)) * 4.0 if moving else 0.0
+	var tex: Texture2D = _tex.get(a["species"])
+	if tex:
+		draw_set_transform(foot + Vector2(0, -hop), 0, Vector2(facing, 1))
+		draw_texture_rect(tex, Rect2(Vector2(-s / 2, -s), Vector2(s, s)), false)
+		draw_set_transform(Vector2.ZERO)
 	var h := Game.happy_now(a)
 	var mood := C_GOOD if h >= 60 else (C_WARN if h >= 30 else C_BAD)
-	draw_circle(p + Vector2(-rad * 0.8, -rad * 0.9), 7, C_PAPER)
-	draw_circle(p + Vector2(-rad * 0.8, -rad * 0.9), 5, mood)
 	var selected: bool = a["id"] == _selected_id
-	_label_pill(p + Vector2(0, rad + 16), a["name"], C_INK if selected else C_PAPER, not selected)
+	var label_pos := foot + Vector2(0, 12)
+	_label_pill(label_pos, a["name"], C_INK if selected else C_PAPER, not selected)
+	var w := _font.get_string_size(a["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + 16
+	draw_circle(label_pos + Vector2(w / 2 + 2, -10), 8, C_PAPER)
+	draw_circle(label_pos + Vector2(w / 2 + 2, -10), 6, mood)
 
 
 func _dashed_tile(r: Rect2, label: String) -> void:
-	draw_rect(r, Color(1, 1, 1, 0.18))
-	draw_rect(r, C_PAPER, false, 3)
+	draw_rect(r, Color(1, 1, 1, 0.22))
+	var dash := 14.0
+	var pts := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
+	for k in 4:
+		var a: Vector2 = pts[k]
+		var b: Vector2 = pts[k + 1]
+		var length := a.distance_to(b)
+		var t := 0.0
+		while t < length:
+			draw_line(a.lerp(b, t / length), a.lerp(b, minf(t + dash, length) / length), C_PAPER, 3)
+			t += dash * 2
 	_text_centered(r, label, 24, C_INK)
 
 
-func _text(pos: Vector2, s: String, fs: int, color: Color) -> void:
-	draw_string(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, color)
+func _heading(pos: Vector2, s: String) -> void:
+	draw_string(_font, pos + Vector2(0, 2), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(0, 0, 0, 0.15))
+	draw_string(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, C_INK)
 
 
 func _text_centered(r: Rect2, s: String, fs: int, color: Color) -> void:
@@ -236,10 +322,16 @@ func _text_centered(r: Rect2, s: String, fs: int, color: Color) -> void:
 
 func _label_pill(center: Vector2, s: String, bg: Color, dark_text := false) -> void:
 	var fs := 18
-	var w := _font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16
+	var w := _font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 18
 	var r := Rect2(center - Vector2(w / 2, 13), Vector2(w, 26))
-	draw_rect(r, bg)
-	draw_string(_font, Vector2(r.position.x + 8, r.position.y + 19), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_INK if dark_text else C_PAPER)
+	draw_circle(r.position + Vector2(13, 13), 13, bg)
+	draw_circle(r.end - Vector2(13, 13), 13, bg)
+	draw_rect(Rect2(r.position + Vector2(13, 0), Vector2(w - 26, 26)), bg)
+	draw_string(_font, Vector2(r.position.x + 9, r.position.y + 19), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_INK if dark_text else C_PAPER)
+
+
+static func _duration(sec: int) -> String:
+	return "%d s" % sec if sec < 60 else "%d min %02d" % [sec / 60, sec % 60]
 
 
 # ---------- toucher ----------
@@ -253,15 +345,18 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _tap(p: Vector2) -> void:
-	# Les animaux passent avant le décor : on cherche le plus proche du doigt.
+	# Les animaux passent avant le décor : on prend le plus proche du centre de son dessin.
 	var best: Dictionary = {}
-	var best_d := 60.0
+	var best_d := INF
 	for a in Game.animals:
-		if _pos.has(a["id"]):
-			var d: float = _pos[a["id"]].distance_to(p)
-			if d < best_d:
-				best_d = d
-				best = a
+		if not _pos.has(a["id"]):
+			continue
+		var s: float = SPRITE_SIZE[Data.SPECIES[a["species"]]["size"]]
+		var center: Vector2 = _pos[a["id"]] - Vector2(0, s * 0.45)
+		var d := center.distance_to(p)
+		if d < s * 0.6 and d < best_d:
+			best_d = d
+			best = a
 	if not best.is_empty():
 		animal_tapped.emit(best)
 		return
