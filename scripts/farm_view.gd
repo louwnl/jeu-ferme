@@ -5,6 +5,7 @@ signal plot_tapped(index: int)
 signal animal_tapped(animal: Dictionary)
 signal add_plot_tapped
 signal build_tapped
+signal pen_tapped(index: int)
 
 const W := 720.0
 const MARGIN := 24.0
@@ -12,6 +13,8 @@ const PLOT_SIZE := Vector2(208, 132)
 const PLOT_GAP := 12.0
 const PEN_SIZE := Vector2(330, 250)
 const PEN_GAP := 12.0
+const HOP_SPEED := 3.2  # radians par seconde : environ un saut par seconde
+const WALK_SPEED := 26.0  # pixels par seconde
 const SPRITE_SIZE := {"petit": 76.0, "moyen": 96.0, "grand": 118.0}
 
 const C_GRASS := Color("8fcf6a")
@@ -19,8 +22,6 @@ const C_GRASS_DARK := Color("78bb57")
 const C_PATH := Color("e6cf9a")
 const C_SOIL := Color("8a5a3a")
 const C_SOIL_DARK := Color("6b4229")
-const C_WOOD := Color("b07a4a")
-const C_WOOD_DARK := Color("7d5230")
 const C_INK := Color("24301f")
 const C_PAPER := Color("fffdf6")
 const C_GOOD := Color("3f8f3a")
@@ -154,7 +155,7 @@ func _process(delta: float) -> void:
 			continue
 		var p: Vector2 = _pos[id]
 		var t: Vector2 = _target[id]
-		var step := 36.0 * delta
+		var step := WALK_SPEED * delta
 		if p.distance_to(t) <= step:
 			_pos[id] = t
 			_target[id] = _random_point(_area_for(a))
@@ -217,18 +218,27 @@ func _draw_plot(i: int, r: Rect2) -> void:
 		var yy := r.position.y + 30 + k * 38
 		draw_rect(Rect2(r.position.x + 8, yy, r.size.x - 16, 10), C_SOIL_DARK.lerp(C_SOIL, 0.4))
 	var p: Dictionary = Game.plots[i]
+	var level := int(p["level"])
+	if level > 1:
+		draw_rect(r, Color("f2c14a"), false, 4)
 	if p["crop"] == "":
 		_text_centered(r, "Planter", 24, C_PAPER)
+		if level > 1:
+			_label_pill(r.position + Vector2(36, 18), "Niv. %d" % level, Color("f2c14a"), true)
 		return
 	var crop: Dictionary = Data.CROPS[p["crop"]]
 	var prog := Game.plot_progress(i)
 	var tex: Texture2D = _tex[p["crop"]] if prog >= 0.5 else _tex["pousse"]
-	var s := lerpf(30.0, 58.0, prog)
-	for row in 2:
+	# Un champ amélioré porte une rangée de plantes en plus.
+	var rows := 2 if level == 1 else 3
+	var s := lerpf(30.0, 58.0, prog) * (1.0 if rows == 2 else 0.78)
+	for row in rows:
 		for col in 3:
-			var foot := r.position + Vector2(38 + col * 66 + (row * 14), 52 + row * 46)
+			var foot := r.position + Vector2(38 + col * 66 + (row % 2) * 14, (52 + row * 46) if rows == 2 else (40 + row * 32))
 			if tex:
 				draw_texture_rect(tex, Rect2(foot - Vector2(s / 2, s), Vector2(s, s)), false)
+	if level > 1:
+		_label_pill(r.position + Vector2(36, 18), "Niv. %d" % level, Color("f2c14a"), true)
 	if prog >= 1.0:
 		var pulse := 0.5 + 0.5 * sin(_time * 4.0)
 		draw_rect(r.grow(2), C_PAPER.lerp(C_GOOD, pulse), false, 5)
@@ -239,24 +249,27 @@ func _draw_plot(i: int, r: Rect2) -> void:
 
 
 func _draw_pen(i: int, r: Rect2) -> void:
+	var e: Dictionary = Game.enclosures[i]
+	var fence: Dictionary = Data.FENCES.get(e.get("fence", "bois"), Data.FENCES["bois"])
+	var rail: Color = fence["color"]
+	var post: Color = fence["dark"]
 	draw_rect(r, C_GRASS.lightened(0.08))
-	# Clôture : deux traverses et des poteaux
+	# Clôture : deux traverses et des poteaux, à la couleur choisie
 	for yy in [r.position.y + 6, r.position.y + 18]:
-		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), C_WOOD)
+		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), rail)
 	for yy in [r.end.y - 18, r.end.y - 6]:
-		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), C_WOOD)
-	draw_rect(Rect2(r.position.x, r.position.y, 6, r.size.y), C_WOOD)
-	draw_rect(Rect2(r.end.x - 6, r.position.y, 6, r.size.y), C_WOOD)
+		draw_rect(Rect2(r.position.x, yy, r.size.x, 6), rail)
+	draw_rect(Rect2(r.position.x, r.position.y, 6, r.size.y), rail)
+	draw_rect(Rect2(r.end.x - 6, r.position.y, 6, r.size.y), rail)
 	var x := r.position.x
 	while x <= r.end.x:
-		draw_rect(Rect2(x - 5, r.position.y - 6, 10, 32), C_WOOD_DARK)
-		draw_rect(Rect2(x - 5, r.end.y - 26, 10, 32), C_WOOD_DARK)
+		draw_rect(Rect2(x - 5, r.position.y - 6, 10, 32), post)
+		draw_rect(Rect2(x - 5, r.end.y - 26, 10, 32), post)
 		x += r.size.x / 5.0
 	# Abreuvoir
 	var trough := Rect2(r.end.x - 70, r.position.y + 34, 52, 18)
-	draw_rect(trough, C_WOOD_DARK)
+	draw_rect(trough, Color("7d5230"))
 	draw_rect(trough.grow(-4), Color("7fc4e6"))
-	var e: Dictionary = Game.enclosures[i]
 	var count := Game.animals_in(i).size()
 	_label_pill(Vector2(r.position.x + 90, r.position.y + 42), "%s · %d/%d" % [Data.ENCLOSURES[e["size"]]["name"], count, Data.ENCLOSURE_CAPACITY], C_PAPER, true)
 
@@ -276,7 +289,9 @@ func _draw_animal(a: Dictionary, foot: Vector2) -> void:
 	var s: float = SPRITE_SIZE[sp["size"]]
 	var moving: bool = _wait.get(a["id"], 0.0) <= 0.0
 	var facing := 1.0 if _target.get(a["id"], foot).x >= foot.x else -1.0
-	var hop := absf(sin(_time * 9.0 + foot.x)) * 4.0 if moving else 0.0
+	# Un petit saut environ une fois par seconde, chaque animal avec son propre rythme.
+	var phase := float(hash(a["id"]) % 1000) / 1000.0 * TAU
+	var hop := absf(sin(_time * HOP_SPEED + phase)) * 3.0 if moving else 0.0
 	var tex: Texture2D = _tex.get(a["species"])
 	if tex:
 		draw_set_transform(foot + Vector2(0, -hop), 0, Vector2(facing, 1))
@@ -363,6 +378,10 @@ func _tap(p: Vector2) -> void:
 	for i in _plot_rects.size():
 		if _plot_rects[i].has_point(p):
 			plot_tapped.emit(i)
+			return
+	for i in _pen_rects.size():
+		if _pen_rects[i].has_point(p):
+			pen_tapped.emit(i)
 			return
 	if _add_plot_rect.has_point(p):
 		add_plot_tapped.emit()
