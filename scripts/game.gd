@@ -16,6 +16,7 @@ var animals: Array = []      # [{id, species, name, happy, happy_at, last_pet, s
 var meals: Array = []        # [{day, ts, note, animal}]
 var orders: Array = []       # [{items: {id: qty}, reward: int}]
 var fences_owned: Array = [] # couleurs de clôture achetées
+var worker: Dictionary = {}  # {name, crop, planted, crate: {id: qty}} ; vide tant qu'il n'est pas embauché
 var last_day := ""
 var streak := 0
 var last_tick := 0.0
@@ -44,6 +45,7 @@ func _process(delta: float) -> void:
 			hearts += n
 			heart_progress -= n
 			mark_dirty()
+	worker_tick()
 	last_tick = now()
 	_save_timer += delta
 	if _dirty and _save_timer > 2.0:
@@ -82,6 +84,7 @@ func new_game() -> void:
 	inventory = {"ble": 3}
 	enclosures = [{"size": "petit", "fence": "bois"}]
 	fences_owned = ["bois"]
+	worker = {}
 	var t := now()
 	animals = [{"id": _uid(), "species": "poule", "name": "Pâquerette", "happy": 70.0, "happy_at": t,
 		"last_pet": 0.0, "saved_at": t, "enclosure": 0}]
@@ -99,7 +102,7 @@ func save_game() -> void:
 	var data := {
 		"version": 1, "coins": coins, "hearts": hearts, "heart_progress": heart_progress,
 		"plots": plots, "inventory": inventory, "enclosures": enclosures, "animals": animals,
-		"meals": meals, "orders": orders, "fences_owned": fences_owned, "last_day": last_day, "streak": streak, "last_tick": now(),
+		"meals": meals, "orders": orders, "fences_owned": fences_owned, "worker": worker, "last_day": last_day, "streak": streak, "last_tick": now(),
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -141,6 +144,10 @@ func load_game() -> bool:
 		if not e.has("fence"):
 			e["fence"] = "bois"
 	fences_owned = d.get("fences_owned", ["bois"])
+	worker = d.get("worker", {})
+	if not worker.is_empty():
+		for k in worker["crate"].keys():
+			worker["crate"][k] = int(worker["crate"][k])
 	while orders.size() < 3:
 		orders.append(_make_order())
 	return true
@@ -168,7 +175,8 @@ func _catch_up() -> void:
 	var n := int(heart_progress)
 	hearts += n
 	heart_progress -= n
-
+	# L'employé a travaillé pendant ce temps (sa caisse limite ce qu'il a pu récolter).
+	worker_tick()
 
 
 func _daily_visit() -> void:
@@ -244,6 +252,97 @@ func upgrade_plot(i: int) -> bool:
 	plots[i]["level"] = int(plots[i]["level"]) + 1
 	mark_dirty()
 	return true
+
+
+# ---------- employé ----------
+
+func has_worker() -> bool:
+	return not worker.is_empty()
+
+
+func hire_worker() -> bool:
+	if has_worker() or coins < Data.WORKER_COST:
+		return false
+	coins -= Data.WORKER_COST
+	worker = {"name": Data.WORKER_NAMES.pick_random(), "crop": "", "planted": 0.0, "crate": {}}
+	mark_dirty()
+	return true
+
+
+func crate_total() -> int:
+	var n := 0
+	for k in worker.get("crate", {}):
+		n += int(worker["crate"][k])
+	return n
+
+
+## Choisit ce que l'employé cultive ("" pour le mettre en pause). Une pousse en cours est perdue.
+func set_worker_crop(crop: String) -> void:
+	if not has_worker() or worker["crop"] == crop:
+		return
+	worker["crop"] = crop
+	worker["planted"] = 0.0
+	worker_tick()
+	mark_dirty()
+
+
+func worker_progress() -> float:
+	if not has_worker() or worker["crop"] == "" or worker["planted"] <= 0.0:
+		return 0.0
+	return clampf((now() - worker["planted"]) / Data.CROPS[worker["crop"]]["grow"], 0.0, 1.0)
+
+
+## Pourquoi l'employé ne travaille pas, ou "" s'il travaille.
+func worker_blocked() -> String:
+	if not has_worker():
+		return ""
+	if worker["crop"] == "":
+		return "Choisis une culture"
+	if worker["planted"] > 0.0:
+		return ""
+	if crate_total() + Data.WORKER_YIELD > Data.WORKER_CRATE:
+		return "Caisse pleine"
+	return "Pas assez de pièces"
+
+
+## Fait avancer le travail de l'employé jusqu'à maintenant : il récolte chaque pousse mûre
+## dans sa caisse, puis replante s'il reste de la place et assez de pièces pour la graine.
+func worker_tick() -> void:
+	if not has_worker() or worker["crop"] == "":
+		return
+	var crop: String = worker["crop"]
+	var grow: float = Data.CROPS[crop]["grow"]
+	var seed: int = Data.CROPS[crop]["seed"]
+	var t := now()
+	var changed_any := false
+	if worker["planted"] > 0.0:
+		while t - worker["planted"] >= grow:
+			worker["crate"][crop] = int(worker["crate"].get(crop, 0)) + Data.WORKER_YIELD
+			changed_any = true
+			if crate_total() + Data.WORKER_YIELD > Data.WORKER_CRATE or coins < seed:
+				worker["planted"] = 0.0
+				break
+			coins -= seed
+			worker["planted"] += grow
+	elif crate_total() + Data.WORKER_YIELD <= Data.WORKER_CRATE and coins >= seed:
+		coins -= seed
+		worker["planted"] = t
+		changed_any = true
+	if changed_any:
+		mark_dirty()
+
+
+## Vide la caisse de l'employé dans l'inventaire. Renvoie le nombre d'unités ramassées.
+func collect_crate() -> int:
+	var n := crate_total()
+	if n == 0:
+		return 0
+	for k in worker["crate"]:
+		add_item(k, int(worker["crate"][k]))
+	worker["crate"] = {}
+	worker_tick()
+	mark_dirty()
+	return n
 
 
 # ---------- clôtures ----------

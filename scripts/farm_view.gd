@@ -6,6 +6,7 @@ signal animal_tapped(animal: Dictionary)
 signal add_plot_tapped
 signal build_tapped
 signal pen_tapped(index: int)
+signal worker_tapped
 
 const W := 720.0
 const MARGIN := 24.0
@@ -34,6 +35,7 @@ var _plot_rects: Array = []
 var _add_plot_rect := Rect2()
 var _pen_rects: Array = []
 var _build_rect := Rect2()
+var _worker_rect := Rect2()
 var _barn_rect := Rect2()
 var _fields_bottom := 0.0
 var _decor: Array = []  # [type, position, taille] : touffes d'herbe et fleurs
@@ -58,6 +60,8 @@ func _ready() -> void:
 	for id in Data.CROPS:
 		_tex[id] = texture("cultures", id)
 	_tex["pousse"] = texture("cultures", "pousse")
+	_tex["employe"] = texture("objets", "employe")
+	_tex["caisse"] = texture("objets", "caisse")
 	Game.changed.connect(_layout)
 	_layout()
 
@@ -81,6 +85,9 @@ func _layout() -> void:
 	if n >= Data.MAX_PLOTS:
 		_add_plot_rect = Rect2()
 	y += ceili(cells / 3.0) * (PLOT_SIZE.y + PLOT_GAP)
+	# Le champ de l'employé, sur toute la largeur, sous les autres champs.
+	_worker_rect = Rect2(Vector2(MARGIN, y + 44), Vector2(W - MARGIN * 2, 150))
+	y += 44 + 150 + PLOT_GAP
 	_fields_bottom = y
 	y += 70
 
@@ -182,6 +189,8 @@ func _draw() -> void:
 	if _add_plot_rect.size != Vector2.ZERO:
 		_dashed_tile(_add_plot_rect, "+ Champ\n%d pièces" % Data.plot_cost(Game.plots.size()))
 
+	_draw_worker(_worker_rect)
+
 	if _pen_rects.size() > 0:
 		_heading(_pen_rects[0].position + Vector2(0, -18), "Enclos")
 	for i in _pen_rects.size():
@@ -246,6 +255,46 @@ func _draw_plot(i: int, r: Rect2) -> void:
 	else:
 		var left := int(ceil((1.0 - prog) * crop["grow"]))
 		_label_pill(Vector2(r.get_center().x, r.end.y - 14), "%s · %s" % [crop["name"], _duration(left)], C_INK)
+
+
+func _draw_worker(r: Rect2) -> void:
+	if not Game.has_worker():
+		_heading(r.position + Vector2(0, -16), "Employé")
+		_dashed_tile(r, "+ Embaucher un employé\n%d pièces" % Data.WORKER_COST)
+		return
+	var w: Dictionary = Game.worker
+	_heading(r.position + Vector2(0, -16), "Le champ de %s" % w["name"])
+	# À gauche, l'employé et sa caisse ; à droite, son champ.
+	var field := Rect2(r.position + Vector2(170, 0), r.size - Vector2(170, 0))
+	draw_rect(Rect2(field.position + Vector2(0, 5), field.size), C_SOIL_DARK)
+	draw_rect(field, C_SOIL)
+	for k in 3:
+		draw_rect(Rect2(field.position.x + 8, field.position.y + 30 + k * 40, field.size.x - 16, 10), C_SOIL_DARK.lerp(C_SOIL, 0.4))
+	var bob := absf(sin(_time * 2.0)) * 2.0 if Game.worker_blocked() == "" else 0.0
+	if _tex["employe"]:
+		draw_texture_rect(_tex["employe"], Rect2(r.position + Vector2(0, 10 - bob), Vector2(110, 110)), false)
+	if _tex["caisse"]:
+		draw_texture_rect(_tex["caisse"], Rect2(r.position + Vector2(98, 70), Vector2(64, 64)), false)
+	var full := Game.crate_total() + Data.WORKER_YIELD > Data.WORKER_CRATE
+	_label_pill(r.position + Vector2(130, r.size.y - 4), "%d/%d" % [Game.crate_total(), Data.WORKER_CRATE], C_WARN if full else C_PAPER, not full)
+	var crop: String = w["crop"]
+	var blocked := Game.worker_blocked()
+	if crop != "" and blocked == "":
+		var prog := Game.worker_progress()
+		var tex: Texture2D = _tex[crop] if prog >= 0.5 else _tex["pousse"]
+		var s := lerpf(30.0, 54.0, prog)
+		for row in 2:
+			for col in 6:
+				var foot := field.position + Vector2(36 + col * 80 + (row % 2) * 16, 56 + row * 46)
+				if tex and foot.x < field.end.x - 20:
+					draw_texture_rect(tex, Rect2(foot - Vector2(s / 2, s), Vector2(s, s)), false)
+		var left := int(ceil((1.0 - prog) * Data.CROPS[crop]["grow"]))
+		_label_pill(Vector2(field.get_center().x, field.end.y - 14), "%s · %s" % [Data.CROPS[crop]["name"], _duration(left)], C_INK)
+	else:
+		_text_centered(field, blocked, 24, C_PAPER)
+	if Game.crate_total() > 0:
+		var pulse := 0.5 + 0.5 * sin(_time * 4.0)
+		draw_rect(r.grow(2), C_PAPER.lerp(C_GOOD, pulse), false, 4 if full else 2)
 
 
 func _draw_pen(i: int, r: Rect2) -> void:
@@ -379,6 +428,9 @@ func _tap(p: Vector2) -> void:
 		if _plot_rects[i].has_point(p):
 			plot_tapped.emit(i)
 			return
+	if _worker_rect.has_point(p):
+		worker_tapped.emit()
+		return
 	for i in _pen_rects.size():
 		if _pen_rects[i].has_point(p):
 			pen_tapped.emit(i)
