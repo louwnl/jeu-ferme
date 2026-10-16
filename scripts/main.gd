@@ -83,6 +83,7 @@ func _build() -> void:
 	farm.add_plot_tapped.connect(_open_build)
 	farm.build_tapped.connect(_open_build)
 	farm.pen_tapped.connect(func(i): open_panel(func(): _build_pen(i)))
+	farm.worker_tapped.connect(func(): open_panel(_build_worker))
 
 	# Boutons du bas
 	var bottom := PanelContainer.new()
@@ -257,6 +258,54 @@ func _build_plant(i: int) -> void:
 		up.pressed.connect(func():
 			if Game.upgrade_plot(i):
 				toast("Champ amélioré : récoltes doublées"))
+	_close_button()
+
+
+func _build_worker() -> void:
+	_picture(FarmView.texture("objets", "employe"), 130)
+	if not Game.has_worker():
+		_title("Embaucher un employé")
+		_para("Il cultive son propre champ : tu choisis la culture, il plante, récolte et replante tout seul, même quand le jeu est fermé. Les graines sont payées avec tes pièces. Ses récoltes vont dans sa caisse (%d places) : viens la vider, sinon il s'arrête." % Data.WORKER_CRATE, true)
+		var hire := _button(panel_box, "Embaucher : %d pièces" % Data.WORKER_COST)
+		hire.icon = FarmView.texture("objets", "pieces")
+		hire.disabled = Game.coins < Data.WORKER_COST
+		hire.autowrap_mode = TextServer.AUTOWRAP_OFF
+		hire.pressed.connect(func():
+			if Game.hire_worker():
+				toast("%s rejoint la ferme" % Game.worker["name"]))
+		_close_button()
+		return
+	var w: Dictionary = Game.worker
+	_title(w["name"])
+	var blocked := Game.worker_blocked()
+	if blocked == "":
+		_para("Cultive : %s. Chaque récolte donne %d unités dans sa caisse." % [Data.CROPS[w["crop"]]["name"], Data.WORKER_YIELD], true)
+	else:
+		_para("En pause : %s." % blocked.to_lower(), true)
+	var n := Game.crate_total()
+	var parts := []
+	for k in w["crate"]:
+		parts.append("%d %s" % [w["crate"][k], Data.CROPS[k]["name"]])
+	var collect := _button(panel_box, "Vider la caisse : %s" % ", ".join(parts) if n > 0 else "Caisse vide (0/%d)" % Data.WORKER_CRATE)
+	collect.icon = FarmView.texture("objets", "caisse")
+	collect.disabled = n == 0
+	collect.autowrap_mode = TextServer.AUTOWRAP_OFF
+	collect.pressed.connect(func():
+		toast("+%d récoltes de %s" % [Game.collect_crate(), w["name"]]))
+	_para("Que doit-il planter ? (changer de culture perd la pousse en cours)", true)
+	for id in Data.CROPS:
+		var c: Dictionary = Data.CROPS[id]
+		var b: Button
+		if id == w["crop"]:
+			b = _button(panel_box, "%s (en cours)" % c["name"])
+			b.disabled = true
+		else:
+			b = _button(panel_box, "%s · %d pièces la graine · %d s" % [c["name"], c["seed"], c["grow"]])
+			b.pressed.connect(func(): Game.set_worker_crop(id))
+		b.icon = _item_icon(id)
+	if w["crop"] != "":
+		var pause := _button(panel_box, "Mettre en pause")
+		pause.pressed.connect(func(): Game.set_worker_crop(""))
 	_close_button()
 
 

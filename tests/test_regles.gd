@@ -38,8 +38,23 @@ func _initialize() -> void:
 	G.hearts = 12
 	check.call(not G.buy_fence("rouge") and G.buy_fence("blanc") and G.hearts == 2, "acheter une couleur coûte des cœurs")
 	check.call(G.set_fence(0, "blanc") and not G.set_fence(0, "rouge"), "on ne peint qu'avec une couleur achetée")
+	G.coins = 400
+	check.call(G.hire_worker() and G.coins == 100 and not G.hire_worker(), "embaucher un employé coûte 300 pièces")
+	G.set_worker_crop("ble")
+	check.call(G.coins == 98 and G.worker["planted"] > 0.0, "il plante tout seul en payant la graine")
+	G.worker["planted"] -= 30 * 3 + 1
+	G.worker_tick()
+	check.call(G.worker["crate"].get("ble", 0) == 6 and G.coins == 92 and G.worker_blocked() == "", "trois récoltes passées, il a replanté à chaque fois")
+	G.worker["planted"] -= 3600
+	G.worker_tick()
+	check.call(G.crate_total() == Data.WORKER_CRATE and G.worker_blocked() == "Caisse pleine", "caisse pleine : il s'arrête")
+	var ble_avant = G.count("ble")
+	check.call(G.collect_crate() == Data.WORKER_CRATE and G.count("ble") == ble_avant + Data.WORKER_CRATE and G.worker_blocked() == "", "vider la caisse le remet au travail")
+	G.coins = 0
+	G.set_worker_crop("tomate")
+	check.call(G.worker_blocked() == "Pas assez de pièces", "sans pièces il attend")
 	G.save_game()
-	check.call(G.load_game() and G.animals.size() == 4 and G.plots[1]["level"] == 2 and G.enclosures[0]["fence"] == "blanc", "sauvegarde puis rechargement")
+	check.call(G.load_game() and G.worker["crop"] == "tomate" and G.animals.size() == 4 and G.plots[1]["level"] == 2 and G.enclosures[0]["fence"] == "blanc", "sauvegarde puis rechargement")
 	var U = root.get_node("Updater")
 	check.call(U.is_newer("v0.3.3", "0.3.2") and U.is_newer("0.10.0", "0.9.9") and not U.is_newer("v0.3.2", "0.3.2") and not U.is_newer("0.3.1", "0.3.2"), "comparaison des versions")
 	G.reset()

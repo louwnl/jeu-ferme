@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="Ferme Refuge"
-config/version="0.3.2"
+config/version="0.4.0"
 config/description="Un jeu de ferme où chaque repas végétalien sauve un animal."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.3", "Mobile")

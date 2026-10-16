@@ -78,6 +78,13 @@ const PLOT_LEVELS := [
 	{"yield": 4, "cost": 150},
 ]
 
+## Employé : il cultive son propre champ, replante seul (en payant les graines avec tes pièces)
+## et range ses récoltes dans sa caisse, qu'on vient vider. Caisse pleine : il attend.
+const WORKER_COST := 300
+const WORKER_YIELD := 2
+const WORKER_CRATE := 20
+const WORKER_NAMES := ["Basile", "Margot", "Jules", "Inès"]
+
 ## Couleurs de clôture, achetées une fois avec des cœurs puis utilisables sur tous les enclos.
 const FENCES := {
 	"bois": {"name": "Bois naturel", "color": Color("b07a4a"), "dark": Color("7d5230"), "hearts": 0},

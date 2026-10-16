@@ -9,6 +9,7 @@ On cultive, on transforme ses récoltes à l'atelier et on remplit les commandes
 ## Les règles en bref
 
 - **Champs** : planter coûte des graines, chaque récolte donne 2 unités, ou 4 sur un champ amélioré au niveau 2 (150 pièces).
+- **Employé** (300 pièces) : il cultive son propre champ. On choisit la culture, il plante, récolte et replante seul, même jeu fermé, en payant les graines avec nos pièces. Ses récoltes s'entassent dans sa caisse (20 places) qu'on vient vider ; caisse pleine, il s'arrête.
 - **Atelier** : 3 blés font un pain, 3 sojas un tofu, etc. Chaque recette propose une vraie idée de plat.
 - **Commandes** : les voisins paient 50 % de plus que le marché.
 - **Repas** : 3 sauvetages maximum par jour, sur l'honneur. Vaches, ânes et chevaux n'arrivent qu'après plusieurs jours d'affilée.
