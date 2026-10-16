@@ -1,0 +1,80 @@
+# Publie automatiquement une nouvelle version du jeu quand la version
+# de project.godot (config/version) change sur main. Le jeu vérifie ces
+# publications au démarrage pour proposer la mise à jour.
+name: APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.3"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lire la version
+        id: version
+        run: echo "value=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)" >> "$GITHUB_OUTPUT"
+
+      - name: Version déjà publiée ?
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
+            echo "Version déjà publiée, rien à faire."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.exists.outputs.skip != 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Godot
+        if: steps.exists.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-1
+
+      - name: Installer Godot et les modèles d'export
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          mkdir -p ~/godot && cd ~/godot
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          [ -f godot ] || { curl -sSL -o g.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" && unzip -q g.zip && mv Godot_v*_linux.x86_64 godot && rm g.zip; }
+          [ -f templates.tpz ] || curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          [ -f uber-apk-signer.jar ] || curl -sSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$dest"
+          unzip -o -j -q templates.tpz "templates/android_*" "templates/version.txt" -d "$dest"
+          mkdir -p ~/.config/godot
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+            "$ANDROID_SDK_ROOT" "$JAVA_HOME" > ~/.config/godot/editor_settings-${GODOT_VERSION}.tres
+
+      - name: Fabriquer l'APK
+        if: steps.exists.outputs.skip != 'true'
+        id: build
+        run: |
+          export GODOT=$HOME/godot/godot SIGNER=$HOME/godot/uber-apk-signer.jar
+          echo "apk=$(tools/build_apk.sh | tail -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publier la version
+        if: steps.exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.version.outputs.value }}"
+          gh release create "v$v" "${{ steps.build.outputs.apk }}" \
+            --title "Ferme Refuge $v" \
+            --notes "Ouvre le fichier .apk sur ton téléphone Android pour installer cette version par-dessus la précédente."
