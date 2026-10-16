@@ -72,6 +72,24 @@ const ENCLOSURES := {
 }
 
 
+## Niveaux des champs : la récolte rapporte « yield » unités. cost : prix pour passer à ce niveau.
+const PLOT_LEVELS := [
+	{"yield": 2, "cost": 0},
+	{"yield": 4, "cost": 150},
+]
+
+## Couleurs de clôture, achetées une fois avec des cœurs puis utilisables sur tous les enclos.
+const FENCES := {
+	"bois": {"name": "Bois naturel", "color": Color("b07a4a"), "dark": Color("7d5230"), "hearts": 0},
+	"blanc": {"name": "Blanc", "color": Color("f4f1ea"), "dark": Color("c9c2b4"), "hearts": 10},
+	"rouge": {"name": "Rouge grange", "color": Color("c8553d"), "dark": Color("8e3725"), "hearts": 15},
+	"bleu": {"name": "Bleu ciel", "color": Color("7fb5dc"), "dark": Color("4f86ae"), "hearts": 15},
+	"jaune": {"name": "Jaune tournesol", "color": Color("f2c14a"), "dark": Color("c08f1e"), "hearts": 20},
+	"rose": {"name": "Rose bonbon", "color": Color("f2a7c0"), "dark": Color("c9728f"), "hearts": 20},
+	"violet": {"name": "Lavande", "color": Color("b39ddb"), "dark": Color("7e66ad"), "hearts": 25},
+}
+
+
 static func item_name(id: String) -> String:
 	if CROPS.has(id):
 		return CROPS[id]["name"]

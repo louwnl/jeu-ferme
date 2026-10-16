@@ -15,6 +15,7 @@ var enclosures: Array = []   # [{size: String}]
 var animals: Array = []      # [{id, species, name, happy, happy_at, last_pet, saved_at, enclosure}]
 var meals: Array = []        # [{day, ts, note, animal}]
 var orders: Array = []       # [{items: {id: qty}, reward: int}]
+var fences_owned: Array = [] # couleurs de clôture achetées
 var last_day := ""
 var streak := 0
 var last_tick := 0.0
@@ -77,9 +78,10 @@ func new_game() -> void:
 	heart_progress = 0.0
 	plots = []
 	for i in Data.START_PLOTS:
-		plots.append({"crop": "", "planted": 0.0})
+		plots.append({"crop": "", "planted": 0.0, "level": 1})
 	inventory = {"ble": 3}
-	enclosures = [{"size": "petit"}]
+	enclosures = [{"size": "petit", "fence": "bois"}]
+	fences_owned = ["bois"]
 	var t := now()
 	animals = [{"id": _uid(), "species": "poule", "name": "Pâquerette", "happy": 70.0, "happy_at": t,
 		"last_pet": 0.0, "saved_at": t, "enclosure": 0}]
@@ -97,7 +99,7 @@ func save_game() -> void:
 	var data := {
 		"version": 1, "coins": coins, "hearts": hearts, "heart_progress": heart_progress,
 		"plots": plots, "inventory": inventory, "enclosures": enclosures, "animals": animals,
-		"meals": meals, "orders": orders, "last_day": last_day, "streak": streak, "last_tick": now(),
+		"meals": meals, "orders": orders, "fences_owned": fences_owned, "last_day": last_day, "streak": streak, "last_tick": now(),
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -132,6 +134,13 @@ func load_game() -> bool:
 		a["enclosure"] = int(a.get("enclosure", -1))
 	for k in inventory.keys():
 		inventory[k] = int(inventory[k])
+	# Parties enregistrées avant les niveaux de champs et les couleurs de clôture.
+	for p in plots:
+		p["level"] = int(p.get("level", 1))
+	for e in enclosures:
+		if not e.has("fence"):
+			e["fence"] = "bois"
+	fences_owned = d.get("fences_owned", ["bois"])
 	while orders.size() < 3:
 		orders.append(_make_order())
 	return true
@@ -188,7 +197,8 @@ func plant(i: int, crop: String) -> bool:
 	if plots[i]["crop"] != "" or coins < cost:
 		return false
 	coins -= cost
-	plots[i] = {"crop": crop, "planted": now()}
+	plots[i]["crop"] = crop
+	plots[i]["planted"] = now()
 	mark_dirty()
 	return true
 
@@ -197,8 +207,9 @@ func harvest(i: int) -> String:
 	if plots[i]["crop"] == "" or plot_progress(i) < 1.0:
 		return ""
 	var crop: String = plots[i]["crop"]
-	add_item(crop, 2)
-	plots[i] = {"crop": "", "planted": 0.0}
+	add_item(crop, plot_yield(i))
+	plots[i]["crop"] = ""
+	plots[i]["planted"] = 0.0
 	mark_dirty()
 	return crop
 
@@ -210,7 +221,47 @@ func buy_plot() -> bool:
 	if coins < cost:
 		return false
 	coins -= cost
-	plots.append({"crop": "", "planted": 0.0})
+	plots.append({"crop": "", "planted": 0.0, "level": 1})
+	mark_dirty()
+	return true
+
+
+func plot_yield(i: int) -> int:
+	return Data.PLOT_LEVELS[int(plots[i]["level"]) - 1]["yield"]
+
+
+## Prix pour passer au niveau suivant, ou -1 si le champ est déjà au maximum.
+func upgrade_cost(i: int) -> int:
+	var lvl := int(plots[i]["level"])
+	return Data.PLOT_LEVELS[lvl]["cost"] if lvl < Data.PLOT_LEVELS.size() else -1
+
+
+func upgrade_plot(i: int) -> bool:
+	var cost := upgrade_cost(i)
+	if cost < 0 or coins < cost:
+		return false
+	coins -= cost
+	plots[i]["level"] = int(plots[i]["level"]) + 1
+	mark_dirty()
+	return true
+
+
+# ---------- clôtures ----------
+
+func buy_fence(id: String) -> bool:
+	var cost: int = Data.FENCES[id]["hearts"]
+	if fences_owned.has(id) or hearts < cost:
+		return false
+	hearts -= cost
+	fences_owned.append(id)
+	mark_dirty()
+	return true
+
+
+func set_fence(enclosure: int, id: String) -> bool:
+	if not fences_owned.has(id):
+		return false
+	enclosures[enclosure]["fence"] = id
 	mark_dirty()
 	return true
 
@@ -339,7 +390,7 @@ func build_enclosure(size: String) -> bool:
 	if coins < cost or enclosures.size() >= Data.MAX_ENCLOSURES:
 		return false
 	coins -= cost
-	enclosures.append({"size": size})
+	enclosures.append({"size": size, "fence": "bois"})
 	# Les animaux qui attendaient dans la grange s'installent s'il y a de la place.
 	for a in waiting_animals():
 		var e := _free_enclosure(Data.SPECIES[a["species"]]["size"])

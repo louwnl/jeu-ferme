@@ -8,11 +8,12 @@ On cultive, on transforme ses récoltes à l'atelier et on remplit les commandes
 
 ## Les règles en bref
 
-- **Champs** : planter coûte des graines, chaque récolte donne 2 unités.
+- **Champs** : planter coûte des graines, chaque récolte donne 2 unités, ou 4 sur un champ amélioré au niveau 2 (150 pièces).
 - **Atelier** : 3 blés font un pain, 3 sojas un tofu, etc. Chaque recette propose une vraie idée de plat.
 - **Commandes** : les voisins paient 50 % de plus que le marché.
 - **Repas** : 3 sauvetages maximum par jour, sur l'honneur. Vaches, ânes et chevaux n'arrivent qu'après plusieurs jours d'affilée.
 - **Enclos** : petit (poule, lapin, canard), moyen (cochon, mouton, chèvre, dinde), grand (vache, âne, cheval). Un animal sans place attend dans la grange.
+- **Clôtures** : des couleurs à acheter avec les cœurs, puis à appliquer sur n'importe quel enclos en le touchant.
 - **Bonheur** : il baisse doucement avec le temps. Caresser donne +10 (toutes les 3 h), nourrir +15, ou +30 avec la culture préférée.
 
 Tous les réglages (prix, temps de pousse, espèces) sont dans `scripts/data.gd`.

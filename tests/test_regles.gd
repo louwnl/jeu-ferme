@@ -28,8 +28,18 @@ func _initialize() -> void:
 	G.add_item("ble", 1)
 	G.feed(G.animals[0], "ble")
 	check.call(G.happy_now(G.animals[0]) > before, "nourrir augmente le bonheur")
+	G.coins = 1000
+	check.call(G.upgrade_plot(1) and G.plot_yield(1) == 4 and G.upgrade_cost(1) == -1, "un champ niveau 2 donne 4 unités")
+	G.plant(1, "soja")
+	G.plots[1]["planted"] -= 100
+	var soja_avant = G.count("soja")
+	G.harvest(1)
+	check.call(G.count("soja") == soja_avant + 4 and G.plots[1]["level"] == 2, "la récolte double et le niveau reste")
+	G.hearts = 12
+	check.call(not G.buy_fence("rouge") and G.buy_fence("blanc") and G.hearts == 2, "acheter une couleur coûte des cœurs")
+	check.call(G.set_fence(0, "blanc") and not G.set_fence(0, "rouge"), "on ne peint qu'avec une couleur achetée")
 	G.save_game()
-	check.call(G.load_game() and G.animals.size() == 4, "sauvegarde puis rechargement")
+	check.call(G.load_game() and G.animals.size() == 4 and G.plots[1]["level"] == 2 and G.enclosures[0]["fence"] == "blanc", "sauvegarde puis rechargement")
 	G.reset()
 	print("%d échec(s)" % fails)
 	quit(1 if fails else 0)

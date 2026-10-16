@@ -80,6 +80,7 @@ func _build() -> void:
 	farm.animal_tapped.connect(_open_animal)
 	farm.add_plot_tapped.connect(_open_build)
 	farm.build_tapped.connect(_open_build)
+	farm.pen_tapped.connect(func(i): open_panel(func(): _build_pen(i)))
 
 	# Boutons du bas
 	var bottom := PanelContainer.new()
@@ -220,7 +221,7 @@ func _on_plot(i: int) -> void:
 
 func _build_plant(i: int) -> void:
 	_title("Que veux-tu planter ?")
-	_para("Chaque récolte donne 2 unités.", true)
+	_para("Champ niveau %d : chaque récolte donne %d unités." % [Game.plots[i]["level"], Game.plot_yield(i)], true)
 	for id in Data.CROPS:
 		var c: Dictionary = Data.CROPS[id]
 		var b := _button(panel_box, "%s · %d pièces · %d s" % [c["name"], c["seed"], c["grow"]])
@@ -229,7 +230,50 @@ func _build_plant(i: int) -> void:
 		b.pressed.connect(func():
 			if Game.plant(i, id):
 				close_panel())
+	var cost := Game.upgrade_cost(i)
+	if cost >= 0:
+		var next: int = Data.PLOT_LEVELS[int(Game.plots[i]["level"])]["yield"]
+		var up := _button(panel_box, "Améliorer ce champ : %d pièces\nLes récoltes donneront %d unités" % [cost, next])
+		up.icon = FarmView.texture("objets", "pieces")
+		up.disabled = Game.coins < cost
+		up.pressed.connect(func():
+			if Game.upgrade_plot(i):
+				toast("Champ amélioré : récoltes doublées"))
 	_close_button()
+
+
+func _build_pen(i: int) -> void:
+	var e: Dictionary = Game.enclosures[i]
+	_title(Data.ENCLOSURES[e["size"]]["name"])
+	_para("Couleur de la clôture. Une couleur achetée sert pour tous tes enclos.", true)
+	for id in Data.FENCES:
+		var f: Dictionary = Data.FENCES[id]
+		var b: Button
+		if id == e["fence"]:
+			b = _button(panel_box, "%s (actuelle)" % f["name"])
+			b.disabled = true
+		elif Game.fences_owned.has(id):
+			b = _button(panel_box, "Peindre en %s" % f["name"].to_lower())
+			b.pressed.connect(func(): Game.set_fence(i, id))
+		else:
+			b = _button(panel_box, "%s : %d cœurs" % [f["name"], f["hearts"]])
+			b.disabled = Game.hearts < f["hearts"]
+			b.pressed.connect(func():
+				if Game.buy_fence(id):
+					Game.set_fence(i, id)
+					toast("Nouvelle couleur : %s" % f["name"].to_lower()))
+		b.icon = _swatch(f["color"], f["dark"])
+		# Texte court : sans retour à la ligne, sinon Godot calcule une hauteur démesurée.
+		b.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_close_button()
+
+
+## Petit carré de couleur pour illustrer un bouton.
+func _swatch(color: Color, border: Color) -> Texture2D:
+	var img := Image.create(40, 40, false, Image.FORMAT_RGBA8)
+	img.fill(border)
+	img.fill_rect(Rect2i(5, 5, 30, 30), color)
+	return ImageTexture.create_from_image(img)
 
 
 func _open_animal(a: Dictionary) -> void:
@@ -432,6 +476,7 @@ func _build_build() -> void:
 			b.pressed.connect(func():
 				if Game.build_enclosure(size):
 					toast("%s construit" % e["name"]))
+	_para("Astuce : touche un champ vide pour l'améliorer, et un enclos pour changer la couleur de sa clôture.", true)
 	_close_button()
 
 
