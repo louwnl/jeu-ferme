@@ -40,6 +40,8 @@ func _initialize() -> void:
 	check.call(G.set_fence(0, "blanc") and not G.set_fence(0, "rouge"), "on ne peint qu'avec une couleur achetée")
 	G.save_game()
 	check.call(G.load_game() and G.animals.size() == 4 and G.plots[1]["level"] == 2 and G.enclosures[0]["fence"] == "blanc", "sauvegarde puis rechargement")
+	var U = root.get_node("Updater")
+	check.call(U.is_newer("v0.3.3", "0.3.2") and U.is_newer("0.10.0", "0.9.9") and not U.is_newer("v0.3.2", "0.3.2") and not U.is_newer("0.3.1", "0.3.2"), "comparaison des versions")
 	G.reset()
 	print("%d échec(s)" % fails)
 	quit(1 if fails else 0)

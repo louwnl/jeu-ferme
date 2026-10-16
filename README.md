@@ -50,10 +50,16 @@ godot --headless --path . -s tests/test_regles.gd
 
 Le guide officiel détaille chaque étape : https://docs.godotengine.org/fr/4.x/tutorials/export/exporting_for_android.html
 
+## Publier une nouvelle version
+
+1. Changer `config/version` dans `project.godot` (par exemple `0.3.3`).
+2. Fusionner sur `main`.
+
+Le workflow `.github/workflows/apk.yml` fabrique alors l'APK (`tools/build_apk.sh`) et le publie dans les Releases du dépôt. Au démarrage, le jeu interroge ces Releases et affiche « Nouvelle version … : installer » si une version plus récente existe. On peut aussi vérifier à la main depuis le Carnet.
+
 ## Prochaines étapes possibles
 
 - Prendre une photo du repas pour le carnet (souvenir, sans analyse).
 - Animations des animaux (marche, câlin, repas).
 - Dépenser les cœurs : décorations, potager, mare.
 - Défis de la semaine et compteur d'impact.
-- Construction automatique de l'APK sur GitHub.

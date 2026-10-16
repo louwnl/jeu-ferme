@@ -16,6 +16,8 @@ var coins_label: Label
 var hearts_label: Label
 var meals_label: Label
 var meal_button: Button
+var update_button: Button
+var bottom_bar: Control
 var overlay: Control
 var panel_box: VBoxContainer
 var toast_label: Label
@@ -86,9 +88,21 @@ func _build() -> void:
 	var bottom := PanelContainer.new()
 	bottom.add_theme_stylebox_override("panel", _box(C_BG, 0, 16))
 	root.add_child(bottom)
+	bottom_bar = bottom
 	var bv := VBoxContainer.new()
 	bv.add_theme_constant_override("separation", 10)
 	bottom.add_child(bv)
+	update_button = Button.new()
+	update_button.visible = false
+	update_button.custom_minimum_size = Vector2(0, 64)
+	update_button.add_theme_stylebox_override("normal", _box(C_GOOD, 16, 10))
+	update_button.add_theme_color_override("font_color", Color.WHITE)
+	update_button.pressed.connect(Updater.open_download)
+	bv.add_child(update_button)
+	Updater.update_found.connect(func(version, _url):
+		update_button.text = "Nouvelle version %s : installer" % version
+		update_button.visible = true)
+	Updater.check()
 	meals_label = Label.new()
 	meals_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	meals_label.add_theme_color_override("font_color", C_MUTED)
@@ -204,6 +218,9 @@ func close_panel() -> void:
 
 func toast(msg: String) -> void:
 	toast_label.text = msg
+	# Juste au-dessus des boutons du bas, dont la hauteur change avec la bannière de mise à jour.
+	toast_label.offset_bottom = -bottom_bar.size.y - 14
+	toast_label.offset_top = toast_label.offset_bottom - 60
 	toast_label.visible = true
 	_toast_time = 2.8
 
@@ -211,8 +228,9 @@ func toast(msg: String) -> void:
 func _on_plot(i: int) -> void:
 	var p: Dictionary = Game.plots[i]
 	if p["crop"] != "" and Game.plot_progress(i) >= 1.0:
+		var amount := Game.plot_yield(i)
 		var crop := Game.harvest(i)
-		toast("+2 %s" % Data.CROPS[crop]["name"])
+		toast("+%d %s" % [amount, Data.CROPS[crop]["name"]])
 	elif p["crop"] != "":
 		toast("%s pousse encore" % Data.CROPS[p["crop"]]["name"])
 	else:
@@ -494,6 +512,12 @@ func _build_journal() -> void:
 	for m in recent:
 		var what: String = m["note"] if m["note"] != "" else "Repas végétalien"
 		_para("%s · %s · %s sauvé·e" % [m["day"], what, m["animal"]])
+	var check := _button(panel_box, "Vérifier les mises à jour (version %s)" % Updater.current_version())
+	check.pressed.connect(func():
+		Updater.check_done.connect(func(found, error):
+			if not found:
+				toast(error if error != "" else "Tu as la dernière version"), CONNECT_ONE_SHOT)
+		Updater.check())
 	var reset := _button(panel_box, "Confirmer : tout effacer" if _confirm_reset else "Nouvelle partie")
 	reset.pressed.connect(func():
 		if _confirm_reset:
